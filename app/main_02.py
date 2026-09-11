@@ -1266,8 +1266,8 @@ sensor_data = get_esp32_sensors()
 # The ESP32 exposes the raw logical reading, so invert it here.
 us_left = float(sensor_data.get("dist1", -1))
 us_right = float(sensor_data.get("dist2", -1))
-ir_left = not bool(sensor_data.get("ir1", False))
-ir_right = not bool(sensor_data.get("ir2", False))
+ir_left = not bool(sensor_data.get("ir2", False))
+ir_right = not bool(sensor_data.get("ir1", False))
 alert = str(sensor_data.get("alert", "offline")).lower()
 
 
@@ -1822,3 +1822,4 @@ st.markdown("""
 <div class="footer-copy">© 2026 BRAINBYTE08 • AI PERCEPTION + SENSOR FUSION + V2V SAFETY</div>
 </div>
 """, unsafe_allow_html=True)
+
