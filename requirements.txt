@@ -1,0 +1,6 @@
+streamlit>=1.40
+streamlit-webrtc>=0.47
+av>=12.0
+opencv-python>=4.9
+numpy>=1.26
+ultralytics>=8.3
