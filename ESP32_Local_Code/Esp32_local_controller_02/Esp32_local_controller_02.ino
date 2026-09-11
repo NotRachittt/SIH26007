@@ -31,6 +31,7 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <esp_now.h>
 
 // ---------- WiFi Access Point credentials ----------
 const char* ssid     = "RobotCar_Shiv";
@@ -90,7 +91,9 @@ bool autoReverseActive = false;
 bool forwardSafetyLocked = false;
 unsigned long autoReverseEndTime = 0;
 const unsigned long AUTO_REVERSE_MS = 200;  // 0.2 second
-const int AUTO_REVERSE_SPEED = 35;          // gentle reverse speed (%)
+const int AUTO_REVERSE_SPEED = 35;
+int v2vCommandSpeed = 0;
+bool v2vCommandMoving = false;          // gentle reverse speed (%)
 
 // ================= Motor functions =================
 void setMotors(int speedLeft, int speedRight) {
@@ -155,6 +158,197 @@ void updateSensors() {
   // Buzzer: ON the moment ANY of the 4 sensors reports something close
   digitalWrite(BUZZER_PIN, danger ? HIGH : LOW);
 }
+
+
+// ================= V2V COMMUNICATION =================
+// Direct ESP32 <-> ESP32 communication using ESP-NOW.
+// Vehicle 01 and Vehicle 02 use the same packet format.
+// Dashboard can read the latest remote status through /v2v.
+
+const uint8_t VEHICLE_ID = 2;
+const uint8_t V2V_BROADCAST_MAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+const uint8_t V2V_WIFI_CHANNEL = 1;
+
+struct V2VPacket {
+  uint8_t senderId;       // 1 or 2
+  uint8_t alertCode;      // 0=safe, 1=caution, 2=danger
+  int16_t distanceCm;     // nearest known ultrasonic distance, -1=unknown
+  int8_t side;            // 0=none, 1=left/US1, 2=right/US2, 3=both
+  int8_t speedPercent;    // current requested forward/reverse magnitude
+  uint8_t moving;         // 0=stopped, 1=moving
+  uint32_t uptimeMs;
+};
+
+volatile bool v2vPacketReceived = false;
+V2VPacket remoteV2V = {};
+unsigned long lastV2VReceived = 0;
+unsigned long lastV2VSend = 0;
+
+const unsigned long V2V_SEND_INTERVAL_MS = 200;
+const unsigned long V2V_TIMEOUT_MS = 1200;
+
+// Keep received state stable while the callback is running.
+portMUX_TYPE v2vMux = portMUX_INITIALIZER_UNLOCKED;
+
+void onV2VReceive(const esp_now_recv_info_t *info,
+                  const uint8_t *incomingData,
+                  int len) {
+
+  if (len != (int)sizeof(V2VPacket)) return;
+
+  V2VPacket packet;
+  memcpy(&packet, incomingData, sizeof(packet));
+
+  // Ignore our own ID or invalid vehicle IDs.
+  if (packet.senderId == VEHICLE_ID ||
+      packet.senderId < 1 ||
+      packet.senderId > 2) {
+    return;
+  }
+
+  portENTER_CRITICAL_ISR(&v2vMux);
+  remoteV2V = packet;
+  v2vPacketReceived = true;
+  portEXIT_CRITICAL_ISR(&v2vMux);
+
+  lastV2VReceived = millis();
+}
+
+void setupV2V() {
+  // ESP-NOW and the vehicle's SoftAP share Wi-Fi channel 1.
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(ssid, password, V2V_WIFI_CHANNEL);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("V2V: ESP-NOW init FAILED");
+    return;
+  }
+
+  esp_now_register_recv_cb(onV2VReceive);
+
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, V2V_BROADCAST_MAC, 6);
+  peerInfo.channel = V2V_WIFI_CHANNEL;
+  peerInfo.encrypt = false;
+
+  if (!esp_now_is_peer_exist(V2V_BROADCAST_MAC)) {
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+      Serial.println("V2V: broadcast peer add FAILED");
+      return;
+    }
+  }
+
+  Serial.print("V2V ready: Vehicle ");
+  Serial.println(VEHICLE_ID);
+}
+
+uint8_t getLocalV2VAlertCode() {
+  if (s_alertLevel == "danger") return 2;
+  if (s_alertLevel == "caution") return 1;
+  return 0;
+}
+
+int16_t getNearestV2VDistance() {
+  long d1 = s_dist1;
+  long d2 = s_dist2;
+
+  if (d1 > 0 && d2 > 0) return (int16_t)min(d1, d2);
+  if (d1 > 0) return (int16_t)d1;
+  if (d2 > 0) return (int16_t)d2;
+  return -1;
+}
+
+int8_t getV2VSide() {
+  bool leftDetected  = (s_dist1 > 0 && s_dist1 < 110);
+  bool rightDetected = (s_dist2 > 0 && s_dist2 < 110);
+
+  if (leftDetected && rightDetected) return 3;
+  if (leftDetected) return 1;
+  if (rightDetected) return 2;
+  return 0;
+}
+
+void sendV2VStatus() {
+  if (!esp_now_is_peer_exist(V2V_BROADCAST_MAC)) return;
+
+  V2VPacket packet = {};
+  packet.senderId = VEHICLE_ID;
+  packet.alertCode = getLocalV2VAlertCode();
+  packet.distanceCm = getNearestV2VDistance();
+  packet.side = getV2VSide();
+
+  // Report the magnitude of the currently commanded motion.
+  packet.speedPercent = (int8_t)constrain(v2vCommandSpeed, 0, 100);
+  packet.moving = v2vCommandMoving ? 1 : 0;
+
+  packet.uptimeMs = millis();
+
+  esp_err_t result = esp_now_send(V2V_BROADCAST_MAC,
+                                  (const uint8_t *)&packet,
+                                  sizeof(packet));
+
+  if (result != ESP_OK) {
+    Serial.println("V2V: send failed");
+  }
+}
+
+void updateV2V() {
+  unsigned long now = millis();
+
+  if (now - lastV2VSend >= V2V_SEND_INTERVAL_MS) {
+    lastV2VSend = now;
+    sendV2VStatus();
+  }
+}
+
+String v2vAlertText(uint8_t code) {
+  if (code == 2) return "danger";
+  if (code == 1) return "caution";
+  return "safe";
+}
+
+String v2vSideText(int8_t side) {
+  if (side == 1) return "left";
+  if (side == 2) return "right";
+  if (side == 3) return "both";
+  return "none";
+}
+
+void handleV2V() {
+  V2VPacket packet;
+  bool received;
+
+  portENTER_CRITICAL(&v2vMux);
+  packet = remoteV2V;
+  received = v2vPacketReceived;
+  portEXIT_CRITICAL(&v2vMux);
+
+  bool linked = received && (millis() - lastV2VReceived <= V2V_TIMEOUT_MS);
+
+  String json = "{";
+  json += "\"localId\":" + String(VEHICLE_ID) + ",";
+  json += "\"linked\":" + String(linked ? "true" : "false") + ",";
+
+  if (linked) {
+    json += "\"remoteId\":" + String(packet.senderId) + ",";
+    json += "\"alert\":\"" + v2vAlertText(packet.alertCode) + "\",";
+    json += "\"distance\":" + String(packet.distanceCm) + ",";
+    json += "\"side\":\"" + v2vSideText(packet.side) + "\",";
+    json += "\"speed\":" + String(packet.speedPercent) + ",";
+    json += "\"moving\":" + String(packet.moving ? "true" : "false");
+  } else {
+    json += "\"remoteId\":-1,";
+    json += "\"alert\":\"offline\",";
+    json += "\"distance\":-1,";
+    json += "\"side\":\"unknown\",";
+    json += "\"speed\":0,";
+    json += "\"moving\":false";
+  }
+
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
 
 // ---------- Web page (game-style button controls + sensor panel) ----------
 const char htmlPage[] PROGMEM = R"rawliteral(
@@ -369,11 +563,15 @@ void handleMove() {
       if (millis() < autoReverseEndTime) {
         // Gentle 0.1-second reverse pulse.
         setMotors(-AUTO_REVERSE_SPEED, -AUTO_REVERSE_SPEED);
+        v2vCommandSpeed = AUTO_REVERSE_SPEED;
+        v2vCommandMoving = true;
         server.send(200, "text/plain", "AUTO_REVERSE");
         return;
       }
 
       autoReverseActive = false;
+      v2vCommandSpeed = 0;
+      v2vCommandMoving = false;
       stopMotors();
       server.send(200, "text/plain", "AUTO_REVERSE_DONE");
       return;
@@ -425,6 +623,8 @@ void handleMove() {
     int rightPWM = map(constrain(right, -100, 100), -100, 100, -255, 255);
 
     setMotors(leftPWM, rightPWM);
+    v2vCommandSpeed = max(abs(left), abs(right));
+    v2vCommandMoving = (left != 0 || right != 0);
     server.send(200, "text/plain", "OK");
   } else {
     server.send(400, "text/plain", "Missing left/right params");
@@ -467,7 +667,7 @@ void setup() {
   SETUP_PWM();
   stopMotors();
 
-  WiFi.softAP(ssid, password);
+  setupV2V();
   Serial.print("Access Point started. Connect to WiFi: ");
   Serial.println(ssid);
   Serial.print("Then open in browser: http://");
@@ -476,12 +676,15 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/move", handleMove);
   server.on("/sensors", handleSensors);
+  server.on("/v2v", handleV2V);
   server.onNotFound(handleNotFound);
   server.begin();
 }
 
 void loop() {
   server.handleClient();
+
+  updateV2V();
 
   // Non-blocking-ish periodic sensor read (doesn't block server.handleClient much)
   unsigned long now = millis();
