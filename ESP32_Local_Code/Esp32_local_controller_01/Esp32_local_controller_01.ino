@@ -83,7 +83,16 @@ long  s_dist1 = -1, s_dist2 = -1;
 bool  s_ir1 = false, s_ir2 = false;   // true = obstacle detected
 String s_alertLevel = "safe";
 unsigned long lastSensorRead = 0;
-const unsigned long SENSOR_INTERVAL_MS = 300;
+const unsigned long SENSOR_INTERVAL_MS = 100;
+
+// ---------- Forward obstacle safety state ----------
+// Verified mechanism transplanted from Vehicle 02.
+// Forward is safety-managed; Reverse/Left/Right controller mapping is unchanged.
+bool autoReverseActive = false;
+bool forwardSafetyLocked = false;
+unsigned long autoReverseEndTime = 0;
+const unsigned long AUTO_REVERSE_MS = 200;   // 0.2 second
+const int AUTO_REVERSE_SPEED = 35;            // gentle reverse speed (%)
 
 // ================= Motor functions =================
 void setMotors(int speedLeft, int speedRight) {
@@ -119,7 +128,7 @@ long readUltrasonicCM(int trigPin, int echoPin) {
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
 
-  long duration = pulseIn(echoPin, HIGH, 30000); // 30ms timeout ~ 500cm
+  long duration = pulseIn(echoPin, HIGH, 20000); // 20ms timeout; no echo/out of range -> -1
   if (duration == 0) return -1;                  // no echo / out of range
 
   return duration * 0.0343 / 2;                  // convert to cm
@@ -355,6 +364,64 @@ void handleMove() {
     int left  = server.arg("left").toInt();
     int right = server.arg("right").toInt();
 
+    int throttle = (left + right) / 2;
+
+    // ---------- Finish the short automatic reverse ----------
+    if (autoReverseActive) {
+      if (millis() < autoReverseEndTime) {
+        setMotors(-AUTO_REVERSE_SPEED, -AUTO_REVERSE_SPEED);
+        server.send(200, "text/plain", "AUTO_REVERSE");
+        return;
+      }
+
+      autoReverseActive = false;
+      stopMotors();
+      server.send(200, "text/plain", "AUTO_REVERSE_DONE");
+      return;
+    }
+
+    // Forward button released -> allow Forward again later.
+    if (throttle <= 0) {
+      forwardSafetyLocked = false;
+    }
+
+    // Prevent repeated forward/reverse oscillation while Forward is held.
+    if (throttle > 0 && forwardSafetyLocked) {
+      stopMotors();
+      server.send(200, "text/plain", "FORWARD_LOCKED");
+      return;
+    }
+
+    // ---------- Forward obstacle detection ----------
+    if (throttle > 0) {
+      // Low forward speed: 70 cm
+      // Higher forward speed: 110 cm
+      // Extra margin compensates for sensing + motor reaction + inertia.
+      int forwardThreshold = (throttle > 40) ? 110 : 70;
+
+      bool obstacleAhead =
+          (s_dist1 > 0 && s_dist1 < forwardThreshold) ||
+          (s_dist2 > 0 && s_dist2 < forwardThreshold);
+
+      if (obstacleAhead) {
+        // Stop forward motion immediately.
+        stopMotors();
+
+        // Lock Forward until the Forward button is released.
+        forwardSafetyLocked = true;
+
+        // Very short + gentle automatic reverse.
+        setMotors(-AUTO_REVERSE_SPEED, -AUTO_REVERSE_SPEED);
+        autoReverseActive = true;
+        autoReverseEndTime = millis() + AUTO_REVERSE_MS;
+
+        server.send(200, "text/plain", "AUTO_REVERSE_START");
+        return;
+      }
+    }
+
+    // ---------- ORIGINAL VEHICLE 01 CONTROLLER OUTPUT ----------
+    // IMPORTANT: Vehicle 01 Left/Right controller mapping is unchanged.
     int leftPWM  = map(constrain(left,  -100, 100), -100, 100, -255, 255);
     int rightPWM = map(constrain(right, -100, 100), -100, 100, -255, 255);
 
