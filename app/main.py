@@ -37,8 +37,27 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 
 .stApp {
-background: #070a0f;
+background:
+radial-gradient(circle at 50% -10%, rgba(139,92,246,.11), transparent 34%),
+radial-gradient(circle at 100% 55%, rgba(56,189,248,.055), transparent 28%),
+#070a0f;
 color: #eef2f7;
+}
+
+.stApp::before {
+content: "";
+position: fixed;
+inset: 0;
+pointer-events: none;
+background: repeating-linear-gradient(
+180deg,
+rgba(255,255,255,.012) 0px,
+rgba(255,255,255,.012) 1px,
+transparent 1px,
+transparent 5px
+);
+opacity: .22;
+z-index: 0;
 }
 
 [data-testid="stSidebar"] {
@@ -47,7 +66,7 @@ border-right: 2px solid #242b38;
 }
 
 .block-container {
-padding-top: 1.5rem;
+padding-top: 1.0rem;
 padding-bottom: 1rem;
 max-width: 1500px;
 }
@@ -140,6 +159,74 @@ color: #fff;
 
 footer {
 visibility: hidden;
+}
+
+/* =======================================================
+   NATIVE STREAMLIT TOP HEADER
+   ======================================================= */
+header[data-testid="stHeader"] {
+background: rgba(7,10,15,.96) !important;
+border-bottom: 1px solid #273142 !important;
+box-shadow: 0 4px 18px rgba(0,0,0,.28) !important;
+height: 64px !important;
+}
+
+header[data-testid="stHeader"]::before {
+content: "SIH PROJECT";
+position: absolute;
+left: 74px;
+top: 23px;
+font-family: 'Space Grotesk', sans-serif;
+font-size: 10px;
+font-weight: 800;
+letter-spacing: 2px;
+color: #cbd5e1;
+}
+
+header[data-testid="stHeader"]::after {
+content: "SIH26007";
+position: absolute;
+left: 50%;
+top: 18px;
+transform: translateX(-50%);
+font-family: 'Syne', sans-serif;
+font-size: 16px;
+font-weight: 800;
+letter-spacing: 1.8px;
+color: #a78bfa;
+text-shadow: 0 0 16px rgba(167,139,250,.25);
+}
+
+header[data-testid="stHeader"] [data-testid="stAppDeployButton"] {
+display: none !important;
+}
+
+header[data-testid="stHeader"] [data-testid="stToolbar"] {
+background: transparent !important;
+}
+
+/* The third header label is injected into the header toolbar. */
+header[data-testid="stHeader"] [data-testid="stToolbar"]::after {
+content: "BRAINBYTE08";
+position: absolute;
+right: 70px;
+top: 23px;
+font-family: 'Space Grotesk', sans-serif;
+font-size: 9px;
+font-weight: 800;
+letter-spacing: 1.7px;
+color: #7dd3fc;
+}
+
+/* Keep the native sidebar control usable above the custom header labels. */
+header[data-testid="stHeader"] button {
+z-index: 20;
+}
+
+@media (max-width: 700px) {
+header[data-testid="stHeader"]::before { left: 54px; font-size: 8px; }
+header[data-testid="stHeader"]::after { font-size: 13px; }
+header[data-testid="stHeader"] [data-testid="stToolbar"]::after { right: 42px; font-size: 7px; }
 }
 
 
@@ -623,6 +710,210 @@ width: 75%;
 }
 }
 
+
+/* =======================================================
+   UPGRADED HMI / NAV / STATUS SYSTEM
+======================================================= */
+
+.top-nav {
+position: relative;
+z-index: 50;
+display: grid;
+grid-template-columns: 1fr auto 1fr;
+align-items: center;
+min-height: 46px;
+padding: 0 15px;
+margin-bottom: 12px;
+background: rgba(10,14,21,.94);
+border: 1px solid #303847;
+box-shadow: 4px 4px 0 #020306;
+font-size: 10px;
+font-weight: 800;
+letter-spacing: 1.8px;
+text-transform: uppercase;
+}
+
+.top-nav .nav-left { justify-self: start; color: #cbd5e1; }
+.top-nav .nav-center { justify-self: center; color: #a78bfa; font-family: 'Syne', sans-serif; font-size: 13px; }
+.top-nav .nav-right { justify-self: end; color: #7dd3fc; }
+
+.nav-dot {
+display: inline-block;
+width: 6px;
+height: 6px;
+border-radius: 50%;
+margin-right: 7px;
+background: #22c55e;
+box-shadow: 0 0 10px rgba(34,197,94,.85);
+animation: navPulse 1.3s ease-in-out infinite;
+}
+
+@keyframes navPulse { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+
+.system-strip {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+gap: 8px;
+margin: -4px 0 16px;
+}
+
+.system-chip {
+background: rgba(11,16,24,.82);
+border: 1px solid #293241;
+padding: 7px 10px;
+font-size: 9px;
+letter-spacing: 1px;
+font-weight: 800;
+color: #94a3b8;
+}
+
+.system-chip strong { color: #e2e8f0; }
+.system-chip.live strong { color: #86efac; }
+.system-chip.ai strong { color: #c4b5fd; }
+.system-chip.link strong { color: #7dd3fc; }
+.system-chip.safe strong { color: #fcd34d; }
+
+.hero {
+background:
+linear-gradient(120deg, rgba(16,22,32,.98), rgba(13,18,27,.96));
+border-top: 1px solid #414b5e;
+}
+
+.hero::after {
+content: "";
+position: absolute;
+right: 0;
+bottom: 0;
+width: 190px;
+height: 2px;
+background: linear-gradient(90deg, transparent, #8b5cf6);
+box-shadow: 0 0 14px rgba(139,92,246,.6);
+}
+
+.hero h1 { text-shadow: 0 0 28px rgba(139,92,246,.18); }
+
+.perception-wrap {
+background:
+radial-gradient(circle at 50% 42%, rgba(139,92,246,.055), transparent 35%),
+linear-gradient(180deg, #080c12 0%, #090d14 100%);
+}
+
+.perception-wrap::before {
+content: "";
+position: absolute;
+inset: 0;
+z-index: 4;
+pointer-events: none;
+background:
+linear-gradient(90deg, transparent 49.8%, rgba(125,211,252,.045) 50%, transparent 50.2%),
+linear-gradient(0deg, transparent 49.8%, rgba(125,211,252,.035) 50%, transparent 50.2%);
+background-size: 100% 100%, 100% 100%;
+}
+
+.perception-wrap::after {
+content: "";
+position: absolute;
+left: 10%;
+right: 10%;
+top: 18%;
+height: 1px;
+z-index: 5;
+background: linear-gradient(90deg, transparent, rgba(125,211,252,.35), transparent);
+box-shadow: 0 0 18px rgba(125,211,252,.18);
+animation: scanSweep 3.2s linear infinite;
+pointer-events: none;
+}
+
+@keyframes scanSweep {
+0% { top: 17%; opacity: 0; }
+12% { opacity: .7; }
+82% { opacity: .7; }
+100% { top: 84%; opacity: 0; }
+}
+
+.perception-meta {
+position: absolute;
+z-index: 22;
+left: 18px;
+bottom: 17px;
+font-family: monospace;
+font-size: 8px;
+letter-spacing: 1px;
+color: #64748b;
+}
+
+.telemetry-box {
+position: relative;
+overflow: hidden;
+transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.telemetry-box:hover {
+transform: translateY(-2px);
+border-color: #475569;
+box-shadow: 0 7px 18px rgba(0,0,0,.24);
+}
+.telemetry-box::after {
+content: "";
+position: absolute;
+left: 0;
+bottom: 0;
+width: 100%;
+height: 2px;
+background: linear-gradient(90deg, transparent, rgba(139,92,246,.65), transparent);
+opacity: .55;
+}
+
+.log-panel {
+scrollbar-width: thin;
+scrollbar-color: #334155 transparent;
+}
+
+.footer-shell {
+margin-top: 26px;
+padding: 18px 4px 4px;
+border-top: 1px solid #273142;
+text-align: center;
+}
+.footer-brand {
+font-family: 'Syne', sans-serif;
+font-size: 15px;
+font-weight: 800;
+letter-spacing: 1px;
+}
+.footer-sub {
+margin-top: 4px;
+font-size: 9px;
+letter-spacing: 1.3px;
+color: #64748b;
+text-transform: uppercase;
+}
+.footer-repo {
+display: inline-block;
+text-decoration: none;
+margin-top: 12px;
+padding: 8px 15px;
+border: 1px solid #3b4658;
+background: #0d131d;
+color: #c4b5fd;
+font-size: 9px;
+font-weight: 800;
+letter-spacing: 1.3px;
+text-transform: uppercase;
+}
+.footer-copy {
+margin-top: 11px;
+font-size: 8px;
+color: #475569;
+letter-spacing: 1px;
+}
+
+@media (max-width: 900px) {
+.top-nav { grid-template-columns: 1fr 1fr; }
+.top-nav .nav-center { justify-self: end; }
+.top-nav .nav-right { display: none; }
+.system-strip { grid-template-columns: repeat(2,1fr); }
+}
+
 </style>""", unsafe_allow_html=True)
 
 
@@ -634,8 +925,16 @@ st.markdown("""
 <div class="hero">
 <div class="live-pill">● LIVE SYSTEM</div>
 <h1>FOG//VISION</h1>
-<p>SIH26007 • CAMERA PERCEPTION • ROBOT SENSOR FUSION • REAL-TIME VISIBILITY</p>
-</div>""", unsafe_allow_html=True)
+<p>AI PERCEPTION • ROBOT SENSOR FUSION • FOG / VISIBILITY • V2V SAFETY</p>
+</div>
+
+<div class="system-strip">
+<div class="system-chip live"><strong>● ESP32</strong> &nbsp; SENSOR LINK</div>
+<div class="system-chip ai"><strong>◈ YOLO</strong> &nbsp; VISION ENGINE</div>
+<div class="system-chip link"><strong>◉ V2V</strong> &nbsp; SAFETY MODULE</div>
+<div class="system-chip safe"><strong>▣ HUD</strong> &nbsp; PERCEPTION ACTIVE</div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -1206,10 +1505,10 @@ FORWARD SENSOR FIELD
 
 <div class="road-center"></div>
 
-<div class="distance-line d10"><span>100M</span></div>
-<div class="distance-line d25"><span>75M</span></div>
-<div class="distance-line d50"><span>50M</span></div>
-<div class="distance-line d75"><span>25M</span></div>
+<div class="distance-line d10"><span>100 CM</span></div>
+<div class="distance-line d25"><span>75 CM</span></div>
+<div class="distance-line d50"><span>50 CM</span></div>
+<div class="distance-line d75"><span>25 CM</span></div>
 
 <div class="sensor-cone cone-left"></div>
 <div class="sensor-cone cone-right"></div>
@@ -1275,6 +1574,10 @@ LONG RANGE
 'RIGHT DANGER ▶' if right_danger else
 '⚠ CAUTION' if alert_class == 'caution' else
 '● PERCEPTION CLEAR'}
+</div>
+
+<div class="perception-meta">
+LIVE FUSION // ULTRASONIC + IR // 10–150 CM MODELLED RANGE
 </div>
 
 </div>""",
@@ -1503,3 +1806,17 @@ f"""
 </div>""",
 unsafe_allow_html=True
 )
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown("""
+<div class="footer-shell">
+<div class="footer-brand">FOG//VISION</div>
+<div class="footer-sub">SIH26007 • BRAINBYTE08 • SMART INDIA HACKATHON 2026</div>
+<a class="footer-repo" href="https://github.com/NotRachittt/SIH26007" target="_blank" rel="noopener noreferrer">⌘ &nbsp; GITHUB REPOSITORY &nbsp; • &nbsp; SIH26007</a>
+<div class="footer-copy">© 2026 BRAINBYTE08 • AI PERCEPTION + SENSOR FUSION + V2V SAFETY</div>
+</div>
+""", unsafe_allow_html=True)
