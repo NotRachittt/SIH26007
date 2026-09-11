@@ -264,8 +264,8 @@ function computeAndSend() {
   if (state.reverse) throttle -= speed;
 
   let turn = 0;
-if (state.left)  turn -= speed;
-if (state.right) turn += speed;
+if (state.left)  turn += speed;
+if (state.right) turn -= speed;
 
   const left  = clamp(throttle - turn, -100, 100);
   const right = clamp(throttle + turn, -100, 100);
